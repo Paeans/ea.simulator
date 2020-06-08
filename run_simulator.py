@@ -18,14 +18,14 @@ mutstep = 1 # the mutation step
 gnum = 20
 topps = 6
 
-def addproc(gain1, gain2, gain3, gain4, gain5, ra, tmr):
+def addproc(gain1, gain2, gain3, gain4, gain5, ra, tmr, eid):
   mid = [d for d in plist.keys() if plist[d] == None]
   if not mid:
     return None
   cmd_line = 'ssh -p 222 -o ConnectTimeout=5 gpan@l-' + \
     mid[0] + ' \'bash -ic "date; cd simulator.dnn; python test.py m' + \
     mid[0] + ' ' + str(gain1) + ' ' + str(gain2) + ' ' +str(gain3) + ' ' + \
-    str(gain4) + ' ' + str(gain5) + ' ' + str(ra) + ' ' + str(tmr) + \
+    str(gain4) + ' ' + str(gain5) + ' ' + str(ra) + ' ' + str(tmr) + ' ' + str(eid) + \
     ' 2>error.txt; date;" \''
   #print(cmd_line)
   proc = subprocess.Popen(
@@ -47,8 +47,8 @@ def retproc():
   return None
 
 def ispsok(new_ps):
-  blist = [5,5,5,5,5,5,1]
-  ulist = [50,50,50,50,50,30,10]
+  blist = [5,5,5,5,5,5,1,1]
+  ulist = [50,50,50,50,50,30,10,20]
   for i in range(len(new_ps)):
     if new_ps[i] < blist[i] or new_ps[i] > ulist[i]:
       return False
@@ -61,6 +61,11 @@ def crossover(p1, p2, ppool):
     pid = np.random.randint(2, size = (size,))
     mutval = np.random.randint(mutstep * 2 + 1, size = (size,))
     new_ps = [[p1[i], p2[i]][pid[i]] + mutval[i] for i in range(size)]
+    # mask gain3 gain4 gain5
+    new_ps[2] = 10
+    new_ps[3] = 10
+    new_ps[4] = 10
+    # end of mask gain4 gain5
     if ispsok(new_ps) and not tuple(new_ps) in ppool.keys():
       return tuple(new_ps)
     count += 1
@@ -72,8 +77,8 @@ def gettop(ppool, num):
   return [x for x, y in sorted_pool[:num]]
 
 def evalppl(pps, ppool, num):
-  for a,b,c,d,e,f,g in [x for i in range(num) for x in pps ]:
-    proc = addproc(a,b,c,d,e,f,g)
+  for a,b,c,d,e,f,g,h in [x for i in range(num) for x in pps ]:
+    proc = addproc(a,b,c,d,e,f,g,h)
     while proc == None:
       output = retproc()
       if output == None:
@@ -81,12 +86,12 @@ def evalppl(pps, ppool, num):
         continue
       # print(output)
       res = output[2].split(':')
-      tname = tuple([int(x) for x in res[1:8]]) # int(res[1]), int(res[2]), int(res[3])])
+      tname = tuple([int(x) for x in res[1:9]]) # int(res[1]), int(res[2]), int(res[3])])
       if tname in ppool.keys():
-        ppool[tname].append(float(res[8]))
+        ppool[tname].append(float(res[9]))
       else:
-        ppool[tname] = [float(res[8])]
-      proc = addproc(a,b,c,d,e,f,g)
+        ppool[tname] = [float(res[9])]
+      proc = addproc(a,b,c,d,e,f,g,h)
 
   while [d for d in plist.keys() if not plist[d] == None] :
     output = retproc()
@@ -95,11 +100,11 @@ def evalppl(pps, ppool, num):
     else:
       # print(output)
       res = output[2].split(':')
-      tname = tuple([int(x) for x in res[1:8]])
+      tname = tuple([int(x) for x in res[1:9]])
       if tname in ppool.keys():
-        ppool[tname].append(float(res[8]))
+        ppool[tname].append(float(res[9]))
       else:
-        ppool[tname] = [float(res[8])]
+        ppool[tname] = [float(res[9])]
       
 
 # RA=10e-12   #ranges from 5e-12 to 20e-12 with "5e-12" steps 
@@ -122,7 +127,9 @@ def run_simulator():
       ppool = {tuple(x):y for [x,y] in stpool[1]}
   else:
     stgen = 0
-    ppl = [(5,5,5,5,5,5,2),(15,15,15,15,15,10,4),(25,25,25,25,25,15,6),(30,30,30,30,30,20,4),(35,35,35,35,35,25,8),(40,40,40,40,40,30,8)] # initial population
+    ppl = [(5,5,5,10,10,5,2,3),(15,15,15,10,10,10,4,6),
+          (25,25,25,10,10,15,6,9),(30,30,30,10,10,20,4,12),
+          (35,35,35,10,10,25,8,15),(40,40,40,10,10,30,8,18)] # initial population
     ppool = {}
     print('generation 0', time.ctime())
     evalppl(ppl, ppool, 16)    
@@ -158,11 +165,15 @@ def run_evaluation(params): # params (5,5,5,10,10,10,2)
   ppl = [params] 
   result = {}
   evalppl(ppl, result, 16)
-  print(result)
+  # print(result)
+  for k,v in result.items():
+    print(k, sum(v)/len(v))
+  # print(result)
   print('EN:', time.ctime())
 
 if __name__ == "__main__":
-  run_simulator()
-  #params = (40, 38, 23, 10, 10, 10, 2)
-  #run_evaluation(params)
+  #run_simulator()
+  for i in range(1,21):
+    params = (10,10,10,10,10,10,2,i)
+    run_evaluation(params)
   
