@@ -12,11 +12,13 @@ import os.path
 # mlist = [''.join(['00', str(x+1)])[-2:] for x in range(8)]
 # l-3d22- ['01','02','03','04','05','06','07','09','11','12','13','14','15','16','18','19']
 # mlist = ['01','02','03','04','05','06','07','08']
-mlist = ['{:0>2d}'.format(x + 1) for x in range(16)] 
+mlist = ['{:0>2d}'.format(x + 1) for x in range(25)] 
 plist = {x:None for x in mlist}
 mutstep = 1 # the mutation step
 gnum = 20
 topps = 6
+
+evaltime = len(mlist)
 
 def addproc(gain1, gain2, gain3, gain4, gain5, ra, tmr, eid):
   mid = [d for d in plist.keys() if plist[d] == None]
@@ -26,7 +28,7 @@ def addproc(gain1, gain2, gain3, gain4, gain5, ra, tmr, eid):
     mid[0] + ' \'bash -ic "date; cd simulator.dnn; python test.py m' + \
     mid[0] + ' ' + str(gain1) + ' ' + str(gain2) + ' ' +str(gain3) + ' ' + \
     str(gain4) + ' ' + str(gain5) + ' ' + str(ra) + ' ' + str(tmr) + ' ' + str(eid) + \
-    ' 2>error.txt; date;" \''
+    ' 2>error' + str(mid[0]) + '.txt; date;" \''
   #print(cmd_line)
   proc = subprocess.Popen(
     shlex.split(cmd_line),
@@ -60,6 +62,7 @@ def crossover(p1, p2, ppool):
   while count < 2**size * 3:
     pid = np.random.randint(2, size = (size,))
     mutval = np.random.randint(mutstep * 2 + 1, size = (size,))
+    # mutval[-1] = 0
     new_ps = [[p1[i], p2[i]][pid[i]] + mutval[i] for i in range(size)]
     # mask gain3 gain4 gain5
     new_ps[2] = 10
@@ -85,12 +88,15 @@ def evalppl(pps, ppool, num):
         time.sleep(1)
         continue
       # print(output)
-      res = output[2].split(':')
-      tname = tuple([int(x) for x in res[1:9]]) # int(res[1]), int(res[2]), int(res[3])])
-      if tname in ppool.keys():
-        ppool[tname].append(float(res[9]))
+      if len(output) < 3:
+        print('error', output)
       else:
-        ppool[tname] = [float(res[9])]
+        res = output[2].split(':')
+        tname = tuple([int(x) for x in res[1:9]]) # int(res[1]), int(res[2]), int(res[3])])
+        if tname in ppool.keys():
+          ppool[tname].append(float(res[9]))
+        else:
+          ppool[tname] = [float(res[9])]
       proc = addproc(a,b,c,d,e,f,g,h)
 
   while [d for d in plist.keys() if not plist[d] == None] :
@@ -99,6 +105,9 @@ def evalppl(pps, ppool, num):
       time.sleep(1)
     else:
       # print(output)
+      if len(output) < 3:
+        print('error', output)
+        continue
       res = output[2].split(':')
       tname = tuple([int(x) for x in res[1:9]])
       if tname in ppool.keys():
@@ -127,12 +136,12 @@ def run_simulator():
       ppool = {tuple(x):y for [x,y] in stpool[1]}
   else:
     stgen = 0
-    ppl = [(5,5,5,10,10,5,2,3),(15,15,15,10,10,10,4,6),
-          (25,25,25,10,10,15,6,9),(30,30,30,10,10,20,4,12),
-          (35,35,35,10,10,25,8,15),(40,40,40,10,10,30,8,18)] # initial population
+    ppl = [(5,5,5,10,10,5,2,4),(15,15,15,10,10,10,4,10),
+          (25,25,25,10,10,15,6,7),(30,30,30,10,10,20,4,18),
+          (35,35,35,10,10,25,8,14),(40,40,40,10,10,30,8,11)] # initial population
     ppool = {}
     print('generation 0', time.ctime())
-    evalppl(ppl, ppool, 16)    
+    [ evalppl([x], ppool, evaltime) for x in ppl ]
     print(ppl)
     rec_json[stgen] = [ppl, sorted(ppool.items(), key=lambda kv:kv[1])]
     with open('result.json', 'w') as res_file:
@@ -143,11 +152,12 @@ def run_simulator():
     ppl = gettop(ppool, topps)
     new_ppl = list(set([crossover(x,y, ppool) for x in ppl for y in ppl if ppl.index(x) < ppl.index(y)]))
     print('generation {}'.format(i+1), time.ctime())
-    evalppl([x for x in new_ppl if not x== None], ppool, 2)
+    # evalppl([x for x in new_ppl if not x== None], ppool, 16)
+    [ evalppl([x], ppool, evaltime) for x in new_ppl if not x == None ]
     print(sorted([(x, sum(ppool[x])/len(ppool[x])) for x in new_ppl if not x == None], key = lambda kv:kv[1]))
-    top_new = gettop({x:ppool[x] for x in new_ppl if not x == None}, 5)
-    evalppl([x for x in top_new if not x == None], ppool, 16)    
-    print(sorted([(x, sum(ppool[x])/len(ppool[x])) for x in top_new if not x == None], key = lambda kv:kv[1]))    
+    # top_new = gettop({x:ppool[x] for x in new_ppl if not x == None}, 5)
+    # evalppl([x for x in top_new if not x == None], ppool, 16)    
+    # print(sorted([(x, sum(ppool[x])/len(ppool[x])) for x in top_new if not x == None], key = lambda kv:kv[1]))    
     rec_json[stgen] = [new_ppl, sorted(ppool.items(), key=lambda kv:kv[1])]
     with open('result.json', 'w') as res_file:
       json.dump(rec_json, res_file)
@@ -164,7 +174,7 @@ def run_evaluation(params): # params (5,5,5,10,10,10,2)
   print('ST:', time.ctime())
   ppl = [params] 
   result = {}
-  evalppl(ppl, result, 16)
+  evalppl(ppl, result, evaltime)
   # print(result)
   for k,v in result.items():
     print(k, sum(v)/len(v))
@@ -172,8 +182,11 @@ def run_evaluation(params): # params (5,5,5,10,10,10,2)
   print('EN:', time.ctime())
 
 if __name__ == "__main__":
-  #run_simulator()
-  for i in range(1,21):
-    params = (10,10,10,10,10,10,2,i)
-    run_evaluation(params)
+  run_simulator()
+  # for params in [(9, 18, 10, 10, 10, 9, 9, 9)    ,
+      # (10, 34, 10, 10, 10, 9, 9, 11)  ,
+      # (9, 18, 10, 10, 10, 23, 6, 9)   ,
+      # (10, 18, 10, 10, 10, 23, 5, 11) ]:
+    # params = (10,10,10,10,10,10,2,i)
+    # run_evaluation(params)
   
