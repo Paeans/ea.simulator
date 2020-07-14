@@ -17,6 +17,7 @@ plist = {x:None for x in mlist}
 mutstep = 1 # the mutation step
 gnum = 20
 topps = 6
+cov_limit = 2
 
 evaltime = len(mlist)
 
@@ -61,23 +62,27 @@ def crossover(p1, p2, ppool):
   size = len(p1)
   while count < 2**size * 3:
     pid = np.random.randint(2, size = (size,))
-    mutval = np.random.randint(mutstep * 2 + 1, size = (size,))
+    mutval = np.random.randint(mutstep * 2 + 1, size = (size,)) - mutstep
     # mutval[-1] = 0
     new_ps = [[p1[i], p2[i]][pid[i]] + mutval[i] for i in range(size)]
     # mask gain3 gain4 gain5
-    new_ps[2] = 10
-    new_ps[3] = 10
+    # new_ps[2] = 10
+    # new_ps[3] = 10
     new_ps[4] = 10
     # end of mask gain4 gain5
+    epoch_rand = np.random.randint(20, size = (1,)) + 1
+    new_ps[-1] = epoch_rand[0]
     if ispsok(new_ps) and not tuple(new_ps) in ppool.keys():
       return tuple(new_ps)
     count += 1
   return None
 
-def gettop(ppool, num):
+def gettop(ppool, num, cov_time = None):
   sorted_pool = sorted(ppool.items(), key=lambda kv:sum(kv[1])/len(kv[1]))
-  print([(x,sum(y)/len(y)) for x, y in sorted_pool[:num]])
-  return [x for x, y in sorted_pool[:num]]
+  # print([(x,sum(y)/len(y)) for x, y in sorted_pool[:num]])
+  if cov_time == None:
+    return [x for x, y in sorted_pool[:num]]
+  return [x for x, y in sorted_pool if cov_time[x] < cov_limit][:num]
 
 def evalppl(pps, ppool, num):
   for a,b,c,d,e,f,g,h in [x for i in range(num) for x in pps ]:
@@ -126,48 +131,64 @@ def evalppl(pps, ppool, num):
 def run_simulator():
   print('ST:', time.ctime())
   rec_json = {}
+  cov_time = {}
 
   # initial population [(5,5,5),(25,25,25),(35,35,35),(50,50,50)]
   if os.path.isfile('result.json'):
     with open('result.json', 'r') as dfile:
-      data = json.load(dfile)
+      rec_json = json.load(dfile)
       stgen, stpool = sorted(data.items(), key = lambda kv:int(kv[0]))[-1]
       stgen = int(stgen) + 1
       ppool = {tuple(x):y for [x,y] in stpool[1]}
+      cov_time = {tuple(x):0 for [x,y] in stpool[1]}
   else:
     stgen = 0
-    ppl = [(5,5,5,10,10,5,2,4),(15,15,15,10,10,10,4,10),
-          (25,25,25,10,10,15,6,7),(30,30,30,10,10,20,4,18),
-          (35,35,35,10,10,25,8,14),(40,40,40,10,10,30,8,11)] # initial population
+    ppl = [(5,5,5,10,10,5,2,9),(15,15,15,10,10,10,4,4),
+          (25,25,25,10,10,15,6,17),(30,30,30,10,10,20,4,8),
+          (35,35,35,10,10,25,8,12),(40,40,40,10,10,30,8,15)] # initial population
     ppool = {}
     print('generation 0', time.ctime())
     [ evalppl([x], ppool, evaltime) for x in ppl ]
+    for x in ppl:
+      cov_time[x] = 0
     print(ppl)
     rec_json[stgen] = [ppl, sorted(ppool.items(), key=lambda kv:kv[1])]
     with open('result.json', 'w') as res_file:
       json.dump(rec_json, res_file)
+    with open('cov_time.json', 'w') as ct_file:
+      json.dump(cov_time.items(), ct_file)
     stgen += 1
 
   for i in range(gnum):  
-    ppl = gettop(ppool, topps)
+    ppl = gettop(ppool, topps, cov_time)
+    print('top ppl to do cross over')
+    
+    for x in ppl:
+      cov_time[x] += 1
+      print(x, cov_time[x])
     new_ppl = list(set([crossover(x,y, ppool) for x in ppl for y in ppl if ppl.index(x) < ppl.index(y)]))
     print('generation {}'.format(i+1), time.ctime())
     # evalppl([x for x in new_ppl if not x== None], ppool, 16)
     [ evalppl([x], ppool, evaltime) for x in new_ppl if not x == None ]
-    print(sorted([(x, sum(ppool[x])/len(ppool[x])) for x in new_ppl if not x == None], key = lambda kv:kv[1]))
+    for x in new_ppl:
+      if not x == None:
+        cov_time[x] = 0
+    print(sorted([(x, '{:.4f}'.format(sum(ppool[x])/len(ppool[x]))) for x in new_ppl if not x == None], key = lambda kv:kv[1]))
     # top_new = gettop({x:ppool[x] for x in new_ppl if not x == None}, 5)
     # evalppl([x for x in top_new if not x == None], ppool, 16)    
     # print(sorted([(x, sum(ppool[x])/len(ppool[x])) for x in top_new if not x == None], key = lambda kv:kv[1]))    
     rec_json[stgen] = [new_ppl, sorted(ppool.items(), key=lambda kv:kv[1])]
     with open('result.json', 'w') as res_file:
       json.dump(rec_json, res_file)
+    with open('cov_time.json', 'w') as ct_file:
+      json.dump(cov_time.items(), ct_file)
     stgen += 1
     
   gettop(ppool, topps)
 
   # with open('result.json', 'w') as res_file:
   #  json.dump(rec_json, res_file)
-
+  
   print('EN:', time.ctime())
 
 def run_evaluation(params): # params (5,5,5,10,10,10,2)
